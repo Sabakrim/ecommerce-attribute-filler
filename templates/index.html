@@ -12,54 +12,35 @@
 <body>
     <div class="background-decor"></div>
     <div class="container">
-        <!-- Main Header -->
         <header class="app-header">
             <div class="logo-badge">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                 <span>Zero-Paid API Engine</span>
             </div>
             <h1>E-commerce Attribute Filler</h1>
-            <p class="subtitle">Fill your existing e-commerce Excel template using a Website URL or PDF catalog.</p>
+            <p class="subtitle">Extract product attribute specifications from a Website URL or PDF catalog into Excel format.</p>
         </header>
 
-        <!-- Main Processing Card -->
         <main class="card-container">
             <form id="filler-form" enctype="multipart/form-data">
                 
-                <!-- Step 1: Excel Template Upload -->
-                <div class="form-section">
-                    <label class="section-label">
-                        <span class="step-num">1</span> Upload Excel Template (.xlsx)
-                    </label>
-                    <div class="drop-zone" id="excel-drop-zone">
-                        <input type="file" id="excel_file" name="excel_file" accept=".xlsx" required class="file-input">
-                        <div class="drop-zone-content">
-                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                            <span class="drop-text" id="excel-file-name">Click or drag & drop your Excel template (.xlsx)</span>
-                            <span class="file-hint">Preserves all formatting, borders, fonts, formulas & column structure</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Step 2: SKU Input -->
                 <div class="form-section">
                     <label for="sku" class="section-label">
-                        <span class="step-num">2</span> Product SKU
+                        <span class="step-num">1</span> Product SKU / Model Code
                     </label>
                     <div class="input-wrapper">
-                        <input type="text" id="sku" name="sku" placeholder="e.g. ABC123" required class="text-input">
+                        <input type="text" id="sku" name="sku" placeholder="e.g. E1232US-1B223-PM000" required class="text-input">
                     </div>
                 </div>
 
-                <!-- Step 3: Source Selection -->
                 <div class="form-section">
                     <label class="section-label">
-                        <span class="step-num">3</span> Choose Product Data Source
+                        <span class="step-num">2</span> Choose Data Source
                     </label>
                     <div class="source-toggle">
                         <label class="radio-card active" id="label-source-url">
                             <input type="radio" name="source_type" value="url" checked>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10z"></path></svg>
                             <span>Website URL</span>
                         </label>
                         <label class="radio-card" id="label-source-pdf">
@@ -70,7 +51,6 @@
                     </div>
                 </div>
 
-                <!-- Step 4: Source Inputs -->
                 <div class="form-section" id="url-input-container">
                     <label for="website_url" class="section-label">Website URL</label>
                     <div class="input-wrapper">
@@ -85,84 +65,78 @@
                         <div class="drop-zone-content">
                             <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                             <span class="drop-text" id="pdf-file-name">Click or drag & drop product specification PDF</span>
-                            <span class="file-hint">Supports multi-SKU catalogs & technical tables</span>
+                            <span class="file-hint">Extracts specifications from technical catalogs & tables</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Options -->
-                <div class="form-options">
-                    <label class="checkbox-container">
-                        <input type="checkbox" id="overwrite_existing" name="overwrite_existing">
-                        <span class="checkmark"></span>
-                        <span>Overwrite existing attribute values (Default: Fill blank cells only)</span>
+                <div class="form-section">
+                    <label class="section-label">
+                        <span class="step-num" style="background:#64748b;">+</span> Excel Template (.xlsx) <span style="font-weight:400; color:var(--text-muted); font-size:0.8rem;">(Optional)</span>
                     </label>
+                    <div class="drop-zone" id="excel-drop-zone">
+                        <input type="file" id="excel_file" name="excel_file" accept=".xlsx" class="file-input">
+                        <div class="drop-zone-content">
+                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                            <span class="drop-text" id="excel-file-name">Drag & drop template file here if you want to auto-fill an existing Excel</span>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Submit Button -->
                 <button type="submit" id="submit-btn" class="primary-btn">
-                    <span>Fill Attributes</span>
+                    <span>Extract Attributes</span>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
                 </button>
             </form>
 
-            <!-- Processing Status Overlay/Card -->
             <div id="status-card" class="status-card hidden">
                 <div class="spinner-container">
                     <div class="spinner"></div>
                 </div>
-                <h3 id="status-title">Processing Request...</h3>
+                <h3 id="status-title">Extracting Product Attributes...</h3>
                 <ul class="progress-steps" id="progress-steps">
-                    <li class="step active" id="step-1">Reading Excel template...</li>
-                    <li class="step" id="step-2">Finding SKU in template...</li>
-                    <li class="step" id="step-3">Reading source data...</li>
-                    <li class="step" id="step-4">Extracting product specifications...</li>
-                    <li class="step" id="step-5">Mapping attributes to template headers...</li>
-                    <li class="step" id="step-6">Updating Excel template...</li>
+                    <li class="step active" id="step-1">Accessing data source...</li>
+                    <li class="step" id="step-2">Searching SKU specifications...</li>
+                    <li class="step" id="step-3">Extracting key-value attributes...</li>
+                    <li class="step" id="step-4">Formatting for Excel...</li>
                 </ul>
             </div>
 
-            <!-- Error Banner -->
             <div id="error-card" class="error-card hidden">
                 <div class="error-header">
-                    <svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="8"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                     <span>Processing Error</span>
                 </div>
                 <p id="error-message"></p>
                 <button type="button" id="error-close-btn" class="secondary-btn">Try Again</button>
             </div>
 
-            <!-- Result Card -->
             <div id="result-card" class="result-card hidden">
                 <div class="result-header">
                     <div class="success-badge">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
                     </div>
                     <div>
-                        <h3>Attributes Filled Successfully</h3>
-                        <p class="result-subtitle">Target SKU: <strong id="res-sku">ABC123</strong></p>
+                        <h3>Attributes Extracted Successfully</h3>
+                        <p class="result-subtitle">Target SKU: <strong id="res-sku">E1232US-1B223-PM000</strong></p>
                     </div>
                 </div>
 
                 <div class="metrics-grid">
                     <div class="metric-item success">
                         <span class="metric-value" id="res-found-count">0</span>
-                        <span class="metric-label">Attributes Found & Filled</span>
-                    </div>
-                    <div class="metric-item warning">
-                        <span class="metric-value" id="res-blank-count">0</span>
-                        <span class="metric-label">Attributes Left Blank</span>
+                        <span class="metric-label">Total Attributes Extracted</span>
                     </div>
                 </div>
 
                 <div class="filled-details" id="filled-details-container">
-                    <h4>Summary of Extracted Attributes</h4>
+                    <h4>Extracted Product Specifications</h4>
                     <div class="table-scroll">
                         <table class="summary-table">
                             <thead>
                                 <tr>
-                                    <th>Excel Header</th>
-                                    <th>Extracted Value</th>
+                                    <th>Attribute Name</th>
+                                    <th>Attribute Value</th>
                                 </tr>
                             </thead>
                             <tbody id="summary-tbody"></tbody>
@@ -171,11 +145,17 @@
                 </div>
 
                 <div class="actions-row">
-                    <a id="download-link" href="#" class="download-btn">
+                    <button type="button" id="copy-btn" class="primary-btn" style="flex:1;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span>Copy All Attributes to Clipboard</span>
+                    </button>
+                    <a id="download-link" href="#" class="download-btn" style="flex:1;">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        <span>Download Filled Excel</span>
+                        <span>Download Excel (.xlsx)</span>
                     </a>
-                    <button type="button" id="reset-btn" class="secondary-btn">Process Another SKU</button>
+                </div>
+                <div>
+                    <button type="button" id="reset-btn" class="secondary-btn" style="width:100%;">Process Another SKU</button>
                 </div>
             </div>
         </main>
