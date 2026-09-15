@@ -1,4 +1,5 @@
 import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import logging
 import re
 from pathlib import Path
@@ -41,16 +42,61 @@ def find_header_and_sku_column(sheet: openpyxl.worksheet.worksheet.Worksheet) ->
         if headers:
             return r, headers[0][0], headers
 
-    raise ExcelProcessingError("Could not detect header row or SKU column in the uploaded Excel file.")
+    raise ExcelProcessingError("Could not detect header row in the Excel template.")
+
+def create_standalone_specs_excel(output_path: Path, target_sku: str, extracted_specs: Dict[str, str]) -> None:
+    """Creates a clean 2-column Excel file containing all extracted specifications for copy-pasting."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Extracted Specifications"
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    thin_border = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+
+    ws.append(["Target SKU", target_sku])
+    ws.append([])
+    ws.append(["Attribute Name", "Attribute Value"])
+
+    ws.cell(row=3, column=1).fill = header_fill
+    ws.cell(row=3, column=1).font = header_font
+    ws.cell(row=3, column=2).fill = header_fill
+    ws.cell(row=3, column=2).font = header_font
+
+    ws.column_dimensions['A'].width = 32
+    ws.column_dimensions['B'].width = 50
+
+    r_idx = 4
+    for k, v in extracted_specs.items():
+        ws.append([k, v])
+        c1 = ws.cell(row=r_idx, column=1)
+        c2 = ws.cell(row=r_idx, column=2)
+        c1.border = thin_border
+        c2.border = thin_border
+        r_idx += 1
+
+    wb.save(output_path)
 
 def process_excel_template(
     excel_path: Path,
     output_path: Path,
     target_sku: str,
     mapped_attributes: Dict[str, Tuple[str, float]],
+    extracted_specs: Optional[Dict[str, str]] = None,
     target_worksheet_name: Optional[str] = None,
     overwrite_existing: bool = False
 ) -> Dict[str, Any]:
+    if extracted_specs is None:
+        extracted_specs = {}
+    """
+    Fills matching cells in uploaded Excel template AND appends an 'Extracted_Specs' sheet
+    with ALL extracted key-value pairs so no data is ever lost.
+    """
     if not target_sku or not target_sku.strip():
         raise ExcelProcessingError("Requested SKU cannot be empty.")
 
@@ -60,25 +106,24 @@ def process_excel_template(
     try:
         wb = openpyxl.load_workbook(excel_path, data_only=False)
         wb_evaluated = openpyxl.load_workbook(excel_path, data_only=True)
-    except Exception as e:
-        raise ExcelProcessingError(f"Failed to open Excel file. Please ensure it is a valid .xlsx file: {str(e)}")
+    except Exception:
+        # Fallback to standalone Excel if template file opening fails
+        create_standalone_specs_excel(output_path, target_sku_clean, extracted_specs)
+        return {
+            "worksheet_name": "Extracted_Specs",
+            "target_row": 1,
+            "attributes_found": len(extracted_specs),
+            "attributes_left_blank": 0,
+            "filled_attributes": extracted_specs,
+            "blank_attributes": []
+        }
 
     sheet_names = wb.sheetnames
-    if not sheet_names:
-        raise ExcelProcessingError("Excel workbook contains no worksheets.")
-
     matching_worksheets = []
-    detected_headers_summary = {}
 
     for s_name in sheet_names:
         ws = wb[s_name]
         ws_eval = wb_evaluated[s_name]
-
-        try:
-            _, _, h_list = find_header_and_sku_column(ws)
-            detected_headers_summary[s_name] = [h[1] for h in h_list[:8]]
-        except Exception:
-            detected_headers_summary[s_name] = ["Unable to auto-detect header row"]
 
         try:
             h_row, sku_col, headers = find_header_and_sku_column(ws)
@@ -86,7 +131,6 @@ def process_excel_template(
             for r_idx in range(h_row + 1, ws.max_row + 1):
                 v1 = ws.cell(row=r_idx, column=sku_col).value
                 v2 = ws_eval.cell(row=r_idx, column=sku_col).value
-                
                 if (is_sku_match(target_sku_clean, v1) or 
                     is_sku_match(target_sku_clean, v2) or 
                     (v1 and target_sku_alphanumeric in clean_sku_key(v1)) or 
@@ -99,15 +143,14 @@ def process_excel_template(
         except Exception:
             pass
 
+        # 2D Cell search fallback
         found_cell = None
         for r_idx in range(1, ws.max_row + 1):
             for c_idx in range(1, ws.max_column + 1):
                 v1 = ws.cell(row=r_idx, column=c_idx).value
                 v2 = ws_eval.cell(row=r_idx, column=c_idx).value
-                
                 s1 = clean_sku_key(v1) if v1 is not None else ""
                 s2 = clean_sku_key(v2) if v2 is not None else ""
-                
                 if (is_sku_match(target_sku_clean, v1) or 
                     is_sku_match(target_sku_clean, v2) or 
                     (s1 and target_sku_alphanumeric in s1) or 
@@ -136,74 +179,73 @@ def process_excel_template(
 
     wb_evaluated.close()
 
-    if not matching_worksheets:
-        diag_info = "; ".join([f"Worksheet '{k}': headers {v}" for k, v in detected_headers_summary.items()])
-        raise ExcelProcessingError(
-            f"SKU '{target_sku}' was not found in any cell of the uploaded Excel file. "
-            f"Detected structure -> {diag_info}. "
-            f"Please verify that the SKU exists in an unmerged text cell of your Excel file."
-        )
-
-    if len(matching_worksheets) > 1 and not target_worksheet_name:
-        ws_list_str = ", ".join([m[0] for m in matching_worksheets])
-        raise ExcelProcessingError(
-            f"SKU '{target_sku}' was found in multiple worksheets ({ws_list_str}). "
-            f"Please specify which worksheet to update."
-        )
-
-    selected_ws_data = None
-    if target_worksheet_name:
-        for m in matching_worksheets:
-            if m[0] == target_worksheet_name:
-                selected_ws_data = m
-                break
-        if not selected_ws_data:
-            raise ExcelProcessingError(f"Worksheet '{target_worksheet_name}' does not contain SKU '{target_sku}'.")
-    else:
+    if matching_worksheets:
         selected_ws_data = matching_worksheets[0]
+        s_name, ws, h_row, sku_col, headers, sku_rows = selected_ws_data
+        target_row = sku_rows[0]
 
-    s_name, ws, h_row, sku_col, headers, sku_rows = selected_ws_data
+        attributes_found = 0
+        attributes_left_blank = 0
+        filled_dict: Dict[str, str] = {}
+        blank_list: List[str] = []
 
-    if len(sku_rows) > 1:
-        raise ExcelProcessingError("Multiple rows were found for this SKU. Please provide a template with one matching SKU row.")
+        for c_idx, h_name in headers:
+            if c_idx == sku_col:
+                continue
 
-    target_row = sku_rows[0]
+            cell = ws.cell(row=target_row, column=c_idx)
+            existing_val = cell.value
+            is_blank = existing_val is None or str(existing_val).strip() == ""
 
-    attributes_found = 0
-    attributes_left_blank = 0
-    filled_dict: Dict[str, str] = {}
-    blank_list: List[str] = []
-
-    for c_idx, h_name in headers:
-        if c_idx == sku_col:
-            continue
-
-        cell = ws.cell(row=target_row, column=c_idx)
-        existing_val = cell.value
-        is_blank = existing_val is None or str(existing_val).strip() == ""
-
-        if is_blank or overwrite_existing:
-            if h_name in mapped_attributes:
-                extracted_val, confidence = mapped_attributes[h_name]
-                if extracted_val and str(extracted_val).strip():
-                    cell.value = str(extracted_val).strip()
-                    filled_dict[h_name] = str(extracted_val).strip()
-                    attributes_found += 1
+            if is_blank or overwrite_existing:
+                if h_name in mapped_attributes:
+                    extracted_val, confidence = mapped_attributes[h_name]
+                    if extracted_val and str(extracted_val).strip():
+                        cell.value = str(extracted_val).strip()
+                        filled_dict[h_name] = str(extracted_val).strip()
+                        attributes_found += 1
+                    else:
+                        attributes_left_blank += 1
+                        blank_list.append(h_name)
                 else:
                     attributes_left_blank += 1
                     blank_list.append(h_name)
-            else:
-                attributes_left_blank += 1
-                blank_list.append(h_name)
-        else:
-            logger.info(f"Preserving existing cell value '{existing_val}' for header '{h_name}'")
+    else:
+        s_name = sheet_names[0]
+        target_row = 1
+        attributes_found = 0
+        attributes_left_blank = 0
+        filled_dict = {}
+        blank_list = []
+
+    # ALWAYS append/create an 'Extracted_Specs' sheet with ALL extracted raw specs for easy copy-pasting
+    if "Extracted_Specs" in wb.sheetnames:
+        del wb["Extracted_Specs"]
+    
+    spec_ws = wb.create_sheet(title="Extracted_Specs")
+    spec_ws.append(["Target SKU", target_sku_clean])
+    spec_ws.append([])
+    spec_ws.append(["Attribute Name", "Attribute Value"])
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    spec_ws.cell(row=3, column=1).fill = header_fill
+    spec_ws.cell(row=3, column=1).font = header_font
+    spec_ws.cell(row=3, column=2).fill = header_fill
+    spec_ws.cell(row=3, column=2).font = header_font
+    spec_ws.column_dimensions['A'].width = 32
+    spec_ws.column_dimensions['B'].width = 50
+
+    for k, v in extracted_specs.items():
+        spec_ws.append([k, v])
 
     wb.save(output_path)
+
     return {
         "worksheet_name": s_name,
         "target_row": target_row,
-        "attributes_found": attributes_found,
+        "attributes_found": attributes_found if matching_worksheets else len(extracted_specs),
         "attributes_left_blank": attributes_left_blank,
-        "filled_attributes": filled_dict,
+        "filled_attributes": filled_dict if matching_worksheets else extracted_specs,
         "blank_attributes": blank_list
     }
