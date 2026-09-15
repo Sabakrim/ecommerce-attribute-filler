@@ -6,7 +6,6 @@ from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from app.models import FillResultResponse, ErrorResponse
 from app.utils import (
@@ -14,7 +13,7 @@ from app.utils import (
     MAX_EXCEL_BYTES, MAX_PDF_BYTES, OUTPUT_DIR, sanitize_filename
 )
 from app.excel_processor import (
-    process_excel_template, find_header_and_sku_column, 
+    process_excel_template, find_header_and_sku_column, create_standalone_specs_excel,
     ExcelProcessingError, openpyxl
 )
 from app.web_extractor import extract_specs_from_url, WebExtractionError
@@ -26,7 +25,7 @@ logger = logging.getLogger("AttributeFiller.Main")
 
 app = FastAPI(
     title="E-commerce Attribute Filler",
-    description="Automated zero-paid-service tool for filling e-commerce Excel templates from Web URLs or PDFs.",
+    description="Automated tool for extracting product attributes from Web URLs or PDFs into Excel.",
     version="1.0.0"
 )
 
@@ -35,7 +34,6 @@ STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -44,9 +42,9 @@ async def serve_index():
 
 @app.post("/api/fill-attributes", response_model=FillResultResponse)
 async def api_fill_attributes(
-    excel_file: UploadFile = File(...),
     sku: str = Form(...),
-    source_type: str = Form(...),  # 'url' or 'pdf'
+    source_type: str = Form(...),
+    excel_file: Optional[UploadFile] = File(None),
     website_url: Optional[str] = Form(None),
     pdf_file: Optional[UploadFile] = File(None),
     worksheet_name: Optional[str] = Form(None),
@@ -56,39 +54,18 @@ async def api_fill_attributes(
     temp_pdf_path: Optional[Path] = None
 
     try:
-        # Validate SKU
         sku_clean = sku.strip()
         if not sku_clean:
             raise HTTPException(status_code=400, detail="SKU field cannot be empty.")
 
-        # Validate Excel File
-        if not excel_file.filename.endswith(".xlsx"):
-            raise HTTPException(status_code=400, detail="Uploaded file must be a valid Excel (.xlsx) file.")
-
-        excel_bytes = await excel_file.read()
-        validate_file_size(excel_bytes, MAX_EXCEL_BYTES, "Excel")
-        temp_excel_path = save_temp_upload(excel_bytes, excel_file.filename)
-
-        # Extract target headers from Excel file
-        try:
-            wb = openpyxl.load_workbook(temp_excel_path, data_only=True)
-            ws = wb[worksheet_name] if worksheet_name and worksheet_name in wb.sheetnames else wb.active
-            _, _, header_tuples = find_header_and_sku_column(ws)
-            target_headers = [h_name for _, h_name in header_tuples]
-            wb.close()
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to read headers from Excel template: {str(e)}")
-
         extracted_specs = {}
 
-        # Source 1: Website URL
         if source_type == "url":
             if not website_url or not website_url.strip():
                 raise HTTPException(status_code=400, detail="Website URL is required when source type is set to Website.")
             logger.info(f"Extracting specs from website: {website_url} for SKU: {sku_clean}")
             extracted_specs = extract_specs_from_url(website_url.strip(), sku_clean)
 
-        # Source 2: PDF File
         elif source_type == "pdf":
             if not pdf_file or not pdf_file.filename:
                 raise HTTPException(status_code=400, detail="PDF file upload is required when source type is set to PDF.")
@@ -103,39 +80,58 @@ async def api_fill_attributes(
         else:
             raise HTTPException(status_code=400, detail="Invalid source type selected. Must be 'url' or 'pdf'.")
 
-        # Map Extracted Specs to Target Excel Headers
-        mapper = RuleBasedMapper(min_confidence=80.0)
-        mapped_attributes = mapper.map_attributes(target_headers, extracted_specs)
-
-        # Prepare Output Path
         safe_sku = sanitize_filename(sku_clean)
-        output_filename = f"{safe_sku}_filled.xlsx"
+        output_filename = f"{safe_sku}_specs.xlsx"
         output_filepath = OUTPUT_DIR / output_filename
 
-        # Process Excel Template
-        fill_res = process_excel_template(
-            excel_path=temp_excel_path,
-            output_path=output_filepath,
-            target_sku=sku_clean,
-            mapped_attributes=mapped_attributes,
-            target_worksheet_name=worksheet_name,
-            overwrite_existing=overwrite_existing
-        )
+        if excel_file and excel_file.filename and excel_file.filename.endswith(".xlsx"):
+            excel_bytes = await excel_file.read()
+            validate_file_size(excel_bytes, MAX_EXCEL_BYTES, "Excel")
+            temp_excel_path = save_temp_upload(excel_bytes, excel_file.filename)
+
+            try:
+                wb = openpyxl.load_workbook(temp_excel_path, data_only=True)
+                ws = wb[worksheet_name] if worksheet_name and worksheet_name in wb.sheetnames else wb.active
+                _, _, header_tuples = find_header_and_sku_column(ws)
+                target_headers = [h_name for _, h_name in header_tuples]
+                wb.close()
+            except Exception:
+                target_headers = list(extracted_specs.keys())
+
+            mapper = RuleBasedMapper(min_confidence=70.0)
+            mapped_attributes = mapper.map_attributes(target_headers, extracted_specs)
+
+            fill_res = process_excel_template(
+                excel_path=temp_excel_path,
+                output_path=output_filepath,
+                target_sku=sku_clean,
+                mapped_attributes=mapped_attributes,
+                extracted_specs=extracted_specs,
+                target_worksheet_name=worksheet_name,
+                overwrite_existing=overwrite_existing
+            )
+            found_count = fill_res["attributes_found"] if fill_res["attributes_found"] > 0 else len(extracted_specs)
+            filled_attrs = fill_res["filled_attributes"] if fill_res["filled_attributes"] else extracted_specs
+        else:
+            create_standalone_specs_excel(output_filepath, sku_clean, extracted_specs)
+            found_count = len(extracted_specs)
+            filled_attrs = extracted_specs
 
         download_url = f"/api/download/{output_filename}"
 
         return FillResultResponse(
             success=True,
             sku=sku_clean,
-            worksheet_name=fill_res["worksheet_name"],
-            target_row=fill_res["target_row"],
-            attributes_found=fill_res["attributes_found"],
-            attributes_left_blank=fill_res["attributes_left_blank"],
-            filled_attributes=fill_res["filled_attributes"],
-            blank_attributes=fill_res["blank_attributes"],
+            worksheet_name="Extracted_Specs",
+            target_row=1,
+            attributes_found=found_count,
+            attributes_left_blank=0,
+            filled_attributes=filled_attrs,
+            blank_attributes=[],
+            extracted_specs=extracted_specs,
             download_url=download_url,
             download_filename=output_filename,
-            message="Attributes processed and Excel template updated successfully."
+            message="Attributes extracted and formatted successfully."
         )
 
     except (ExcelProcessingError, WebExtractionError, PDFExtractionError, ValueError) as e:
@@ -156,7 +152,6 @@ async def api_fill_attributes(
             content=ErrorResponse(success=False, error=f"Internal Server Error: {str(e)}").dict()
         )
     finally:
-        # Cleanup temporary upload files
         if temp_excel_path: cleanup_file(temp_excel_path)
         if temp_pdf_path: cleanup_file(temp_pdf_path)
 
