@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.models import FillResultResponse, ErrorResponse
 from app.utils import (
@@ -13,9 +14,22 @@ from app.utils import (
     MAX_EXCEL_BYTES, MAX_PDF_BYTES, OUTPUT_DIR, sanitize_filename
 )
 from app.excel_processor import (
-    process_excel_template, find_header_and_sku_column, create_standalone_specs_excel,
+    process_excel_template, find_header_and_sku_column,
     ExcelProcessingError, openpyxl
 )
+try:
+    from app.excel_processor import create_standalone_specs_excel
+except ImportError:
+    def create_standalone_specs_excel(output_path: Path, target_sku: str, extracted_specs: dict) -> None:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Extracted Specifications"
+        ws.append(["Target SKU", target_sku])
+        ws.append([])
+        ws.append(["Attribute Name", "Attribute Value"])
+        for k, v in extracted_specs.items():
+            ws.append([k, v])
+        wb.save(output_path)
 from app.web_extractor import extract_specs_from_url, WebExtractionError
 from app.pdf_extractor import extract_specs_from_pdf, PDFExtractionError
 from app.attribute_mapper import RuleBasedMapper
@@ -43,7 +57,7 @@ async def serve_index():
 @app.post("/api/fill-attributes", response_model=FillResultResponse)
 async def api_fill_attributes(
     sku: str = Form(...),
-    source_type: str = Form(...),
+    source_type: str = Form(...),  # 'url' or 'pdf'
     excel_file: Optional[UploadFile] = File(None),
     website_url: Optional[str] = Form(None),
     pdf_file: Optional[UploadFile] = File(None),
@@ -60,12 +74,14 @@ async def api_fill_attributes(
 
         extracted_specs = {}
 
+        # Source 1: Website URL
         if source_type == "url":
             if not website_url or not website_url.strip():
                 raise HTTPException(status_code=400, detail="Website URL is required when source type is set to Website.")
             logger.info(f"Extracting specs from website: {website_url} for SKU: {sku_clean}")
             extracted_specs = extract_specs_from_url(website_url.strip(), sku_clean)
 
+        # Source 2: PDF File
         elif source_type == "pdf":
             if not pdf_file or not pdf_file.filename:
                 raise HTTPException(status_code=400, detail="PDF file upload is required when source type is set to PDF.")
@@ -84,6 +100,7 @@ async def api_fill_attributes(
         output_filename = f"{safe_sku}_specs.xlsx"
         output_filepath = OUTPUT_DIR / output_filename
 
+        # If Excel Template was provided by user
         if excel_file and excel_file.filename and excel_file.filename.endswith(".xlsx"):
             excel_bytes = await excel_file.read()
             validate_file_size(excel_bytes, MAX_EXCEL_BYTES, "Excel")
@@ -113,6 +130,7 @@ async def api_fill_attributes(
             found_count = fill_res["attributes_found"] if fill_res["attributes_found"] > 0 else len(extracted_specs)
             filled_attrs = fill_res["filled_attributes"] if fill_res["filled_attributes"] else extracted_specs
         else:
+            # Standalone Extraction mode (No template required)
             create_standalone_specs_excel(output_filepath, sku_clean, extracted_specs)
             found_count = len(extracted_specs)
             filled_attrs = extracted_specs
