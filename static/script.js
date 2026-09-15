@@ -45,14 +45,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     excelFileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
-            excelFileName.textContent = `Selected: ${e.target.files[0].name}`;
+            excelFileName.textContent = `Selected Template: ${e.target.files[0].name}`;
             excelDropZone.style.borderColor = 'var(--accent-emerald)';
         }
     });
 
     pdfFileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
-            pdfFileName.textContent = `Selected: ${e.target.files[0].name}`;
+            pdfFileName.textContent = `Selected PDF: ${e.target.files[0].name}`;
             pdfDropZone.style.borderColor = 'var(--accent-emerald)';
         }
     });
@@ -60,14 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        if (!excelFileInput.files || excelFileInput.files.length === 0) {
-            showError('Please upload an Excel template (.xlsx) file.');
-            return;
-        }
-
         const skuInput = document.getElementById('sku').value.trim();
         if (!skuInput) {
-            showError('Please enter a SKU.');
+            showError('Please enter a SKU or Model code.');
             return;
         }
 
@@ -94,9 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('step-1'),
             document.getElementById('step-2'),
             document.getElementById('step-3'),
-            document.getElementById('step-4'),
-            document.getElementById('step-5'),
-            document.getElementById('step-6')
+            document.getElementById('step-4')
         ];
 
         steps.forEach((s, idx) => {
@@ -112,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 stepIdx++;
                 steps[stepIdx].classList.add('active');
             }
-        }, 600);
+        }, 500);
 
         try {
             const formData = new FormData(form);
@@ -135,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             if (!response.ok || !data.success) {
-                showError(data.error || 'Failed to process request.');
+                showError(data.error || 'Failed to extract specifications.');
                 return;
             }
 
@@ -158,7 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         document.getElementById('res-sku').textContent = data.sku;
         document.getElementById('res-found-count').textContent = data.attributes_found;
-        document.getElementById('res-blank-count').textContent = data.attributes_left_blank;
         
         const downloadLink = document.getElementById('download-link');
         downloadLink.href = data.download_url;
@@ -167,35 +159,48 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('summary-tbody');
         tbody.innerHTML = '';
         
-        const filledKeys = Object.keys(data.filled_attributes);
-        if (filledKeys.length === 0) {
-            const rawKeys = Object.keys(data.extracted_specs || {});
-            if (rawKeys.length > 0) {
-                rawKeys.forEach(k => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td style="font-weight: 500; color: #cbd5e1;">[Extracted Source Spec] ${k}</td>
-                        <td style="color: #f59e0b; font-weight: 500;">${data.extracted_specs[k]}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            } else {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td colspan="2" style="text-align:center; color: var(--text-muted);">No specification key-value pairs could be extracted from the source.</td>`;
-                tbody.appendChild(tr);
-            }
+        const attrsToDisplay = (Object.keys(data.filled_attributes).length > 0) ? data.filled_attributes : data.extracted_specs;
+        const keys = Object.keys(attrsToDisplay || {});
+
+        if (keys.length === 0) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="2" style="text-align:center; color: var(--text-muted);">No specification key-value pairs could be extracted from the source.</td>`;
+            tbody.appendChild(tr);
         } else {
-            filledKeys.forEach(header => {
+            keys.forEach(k => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td style="font-weight: 500; color: #f1f5f9;">${header}</td>
-                    <td style="color: var(--accent-emerald); font-weight: 600;">${data.filled_attributes[header]}</td>
+                    <td style="font-weight: 600; color: #f1f5f9;">${k}</td>
+                    <td style="color: var(--accent-emerald); font-weight: 600;">${attrsToDisplay[k]}</td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
         resultCard.classList.remove('hidden');
+    }
+
+    const copyBtn = document.getElementById('copy-btn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+            const tbody = document.getElementById('summary-tbody');
+            let copyText = "Attribute Name\tAttribute Value\n";
+            const rows = tbody.querySelectorAll('tr');
+            rows.forEach(r => {
+                const cols = r.querySelectorAll('td');
+                if (cols.length === 2) {
+                    copyText += `${cols[0].textContent.trim()}\t${cols[1].textContent.trim()}\n`;
+                }
+            });
+            navigator.clipboard.writeText(copyText).then(() => {
+                copyBtn.innerHTML = '<span>Copied to Clipboard!</span>';
+                setTimeout(() => {
+                    copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>Copy All Attributes to Clipboard</span>';
+                }, 2000);
+            }).catch(err => {
+                alert('Copy failed: ' + err);
+            });
+        });
     }
 
     errorCloseBtn.addEventListener('click', () => {
@@ -206,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
     resetBtn.addEventListener('click', () => {
         resultCard.classList.add('hidden');
         form.reset();
-        excelFileName.textContent = 'Click or drag & drop your Excel template (.xlsx)';
+        excelFileName.textContent = 'Drag & drop template file here if you want to auto-fill an existing Excel';
         excelDropZone.style.borderColor = 'rgba(255, 255, 255, 0.15)';
         pdfFileName.textContent = 'Click or drag & drop product specification PDF';
         pdfDropZone.style.borderColor = 'rgba(255, 255, 255, 0.15)';
