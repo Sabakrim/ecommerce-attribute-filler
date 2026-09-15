@@ -93,10 +93,7 @@ def process_excel_template(
 ) -> Dict[str, Any]:
     if extracted_specs is None:
         extracted_specs = {}
-    """
-    Fills matching cells in uploaded Excel template AND appends an 'Extracted_Specs' sheet
-    with ALL extracted key-value pairs so no data is ever lost.
-    """
+
     if not target_sku or not target_sku.strip():
         raise ExcelProcessingError("Requested SKU cannot be empty.")
 
@@ -107,7 +104,6 @@ def process_excel_template(
         wb = openpyxl.load_workbook(excel_path, data_only=False)
         wb_evaluated = openpyxl.load_workbook(excel_path, data_only=True)
     except Exception:
-        # Fallback to standalone Excel if template file opening fails
         create_standalone_specs_excel(output_path, target_sku_clean, extracted_specs)
         return {
             "worksheet_name": "Extracted_Specs",
@@ -143,7 +139,6 @@ def process_excel_template(
         except Exception:
             pass
 
-        # 2D Cell search fallback
         found_cell = None
         for r_idx in range(1, ws.max_row + 1):
             for c_idx in range(1, ws.max_column + 1):
@@ -218,7 +213,6 @@ def process_excel_template(
         filled_dict = {}
         blank_list = []
 
-    # ALWAYS append/create an 'Extracted_Specs' sheet with ALL extracted raw specs for easy copy-pasting
     if "Extracted_Specs" in wb.sheetnames:
         del wb["Extracted_Specs"]
     
